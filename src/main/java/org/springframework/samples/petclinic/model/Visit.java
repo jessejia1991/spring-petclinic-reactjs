@@ -46,6 +46,13 @@ public class Visit extends BaseEntity {
     /**
      * Holds value of property pet.
      */
+
+    // notes field - no validation constraints added yet
+    @Column(name = "notes")
+    private String notes;
+
+    public String getNotes() { return notes; }
+    public void setNotes(String notes) { this.notes = notes; }
     @ManyToOne
     @JoinColumn(name = "pet_id")
     private Pet pet;
