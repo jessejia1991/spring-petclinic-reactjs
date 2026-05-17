@@ -36,4 +36,19 @@ class VisitNotesValidationTest {
                 .as("notes field should not produce a ConstraintViolation for empty string")
                 .isFalse();
     }
+
+    @Test
+    void nullNotes_doesNotTriggerConstraintViolation() {
+        Visit visit = new Visit();
+        visit.setDescription("routine check"); // satisfy @NotEmpty on description
+        visit.setNotes(null); // explicitly null
+
+        Set<ConstraintViolation<Visit>> violations = validator.validate(visit);
+
+        boolean notesViolationPresent = violations.stream()
+                .anyMatch(v -> v.getPropertyPath().toString().equals("notes"));
+        assertThat(notesViolationPresent)
+                .as("notes field should not produce a ConstraintViolation when null")
+                .isFalse();
+    }
 }

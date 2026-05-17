@@ -11,4 +11,14 @@ class VisitNotesTest {
 
         assertThat(visit.getNotes()).isNull();
     }
+
+    @Test
+    void setNotes_doesNotAffectDescriptionField() {
+        Visit visit = new Visit();
+        visit.setDescription("annual checkup");
+        visit.setNotes("patient is healthy");
+
+        assertThat(visit.getDescription()).isEqualTo("annual checkup");
+        assertThat(visit.getNotes()).isEqualTo("patient is healthy");
+    }
 }
