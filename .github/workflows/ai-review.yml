@@ -21,12 +21,24 @@
 #     infra failure that stops verify from running turns the check red.
 #   - On issue_comment containing "/apply": apply the chosen review fixes and
 #     commit them to the PR branch.
+#   - On push to the default branch (a merged PR): deploy petclinic as a
+#     resident local service, then verify it is live and running exactly the
+#     merged commit (health + git-version check). The outcome is posted back
+#     to the merged PR.
 #
 # Prerequisites on the self-hosted runner (run it as a normal user account via
 # `./run.sh` — not a privileged or `runner`-system context):
 #   1. Python 3.12+ and git on PATH
 #   2. JDK 17+ and Maven on PATH (to build/run petclinic)
 #   3. Network access to github.com and api.anthropic.com
+#
+# On the petclinic fork itself: the `deploy` job verifies the deployment by
+# reading the running service's git commit id from Spring Actuator, so the
+# fork must expose it — add to application.properties
+#   management.endpoints.web.exposure.include=health,info
+#   management.info.git.mode=full
+# and add the git-commit-id-maven-plugin to pom.xml. The README "CI/CD
+# pipeline" section has the exact snippets.
 #
 # Repository secrets to set in the petclinic fork (Settings > Secrets and
 # variables > Actions):
@@ -46,6 +58,10 @@ on:
     types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
+  # CD: a push to the default branch is a merged PR. Change `main` here
+  # if your fork's default branch is `master`.
+  push:
+    branches: [main]
 
 # The GITHUB_TOKEN that GitHub Actions injects is read-only by default on
 # many repos. This pipeline posts PR comments and pushes /apply fixes, so
@@ -63,11 +79,10 @@ env:
   ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL || 'claude-sonnet-4-6' }}
   REVIEW_ALLOWED_REPOS: ${{ secrets.REVIEW_ALLOWED_REPOS }}
   REVIEW_POST_COMMENTS: 'true'
-  # Base URL the external e2e tests + health-check target. petclinic-rest
-  # serves its API under the /petclinic context path and an /api prefix —
-  # this must match the `servers:` url in the app's openapi spec. Change it
-  # if you point the pipeline at a different service.
-  VERIFY_TARGET_URL: 'http://localhost:9966/petclinic/api'
+  # VERIFY_TARGET_URL is intentionally NOT set workflow-wide: the CI
+  # `review-and-verify` job sets it per-job to port 9967, so its
+  # throwaway petclinic never collides with the resident CD deployment
+  # on 9966. The `deploy` job targets actuator on 9966 explicitly.
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -77,6 +92,11 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: self-hosted
     timeout-minutes: 25
+    # CI runs petclinic on 9967 as a throwaway instance just for the e2e
+    # tests. The CD `deploy` job keeps a resident instance on 9966 — the
+    # two ports must differ so a CI run never collides with a deployment.
+    env:
+      VERIFY_TARGET_URL: 'http://localhost:9967/petclinic/api'
     steps:
       - name: Checkout petclinic PR
         uses: actions/checkout@v4
@@ -125,11 +145,14 @@ jobs:
       - name: Build petclinic
         run: mvn -B package -DskipTests
 
-      # CD gate — start the service in background, wait until the
-      # health endpoint responds, then run our external e2e tests.
+      # Start petclinic on the CI port (9967) as a throwaway instance for
+      # the e2e tests, wait until its health endpoint responds, then run
+      # the tests. The real deployment is the separate `deploy` job below.
       - name: Start petclinic
         run: |
-          nohup mvn -B spring-boot:run > /tmp/petclinic.log 2>&1 &
+          nohup mvn -B spring-boot:run \
+            -Dspring-boot.run.arguments=--server.port=9967 \
+            > /tmp/petclinic.log 2>&1 &
           echo "$!" > /tmp/petclinic.pid
 
       - name: Wait for petclinic ready
@@ -167,8 +190,10 @@ jobs:
           if [ -f /tmp/petclinic.pid ]; then
             kill "$(cat /tmp/petclinic.pid)" || true
           fi
-          # Belt-and-suspenders for the Maven wrapper child process.
+          # Belt-and-suspenders: kill the Maven wrapper child and free the
+          # CI port (9967). The CD resident instance on 9966 is left alone.
           pkill -f 'spring-boot:run' || true
+          lsof -ti:9967 | xargs kill -9 2>/dev/null || true
 
       # The review + verify steps run continue-on-error, so every stage
       # above completes and reports even when a gate trips. This final
@@ -251,3 +276,112 @@ jobs:
             --comment-id ${{ github.event.comment.id }} \
             --target-path ${{ github.workspace }} \
             --push
+
+  # ---------------------------------------------------------------------------
+  # CD job: on a push to the default branch (= a merged PR), deploy petclinic
+  # as a resident local service and verify the deployment is live and runs
+  # exactly the merged commit. The outcome is posted back to the merged PR.
+  # ---------------------------------------------------------------------------
+  deploy:
+    if: github.event_name == 'push'
+    runs-on: self-hosted
+    timeout-minutes: 20
+    # Never let two deploys race for the deployment port.
+    concurrency:
+      group: cd-deploy
+      cancel-in-progress: false
+    # Where this job deploys petclinic — the single source of truth for
+    # the deployment address. Every step below derives its port / URL
+    # from these. DEPLOY_PORT differs from the CI job's 9967 so the
+    # resident deployment and a CI run never collide.
+    env:
+      DEPLOY_HOST: 'localhost'
+      DEPLOY_PORT: '9966'
+    steps:
+      - name: Checkout merged commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare AI tool
+        run: |
+          set -e
+          AI_TOOL_PATH="$HOME/ai-engineering-workspace"
+          AI_TOOL_REPO="https://github.com/jessejia1991/ai-engineering-workspace.git"
+          if [ -d "$AI_TOOL_PATH/.git" ]; then
+            git -C "$AI_TOOL_PATH" fetch --quiet origin
+            git -C "$AI_TOOL_PATH" reset --hard --quiet origin/main
+          else
+            git clone "$AI_TOOL_REPO" "$AI_TOOL_PATH"
+          fi
+          [ -d "$AI_TOOL_PATH/venv" ] || python3 -m venv "$AI_TOOL_PATH/venv"
+          "$AI_TOOL_PATH/venv/bin/pip" install -q -r "$AI_TOOL_PATH/requirements.txt"
+          echo "AI_TOOL_PATH=$AI_TOOL_PATH" >> "$GITHUB_ENV"
+
+      - name: Stop previous deployment
+        run: |
+          # Replace the resident instance left by the last deploy.
+          if [ -f "$HOME/.ai-workspace/cd-petclinic.pid" ]; then
+            kill "$(cat "$HOME/.ai-workspace/cd-petclinic.pid")" 2>/dev/null || true
+          fi
+          # Belt-and-suspenders: free the deployment port.
+          lsof -ti:"$DEPLOY_PORT" | xargs kill -9 2>/dev/null || true
+          sleep 2
+
+      - name: Build petclinic
+        run: mvn -B package -DskipTests
+
+      - name: Deploy petclinic (resident)
+        run: |
+          JAR=$(ls target/*.jar | head -1)
+          mkdir -p "$HOME/.ai-workspace"
+          # Run the built jar — a real deployment, not the dev-mode
+          # `spring-boot:run`. The subshell + nohup detaches the JVM from
+          # the job's process tree so it survives as the resident service.
+          # macOS has no `setsid`; exiting the subshell reparents the
+          # process to launchd, which serves the same purpose.
+          ( nohup java -jar "$JAR" --server.port="$DEPLOY_PORT" \
+              </dev/null >/tmp/cd-petclinic.log 2>&1 &
+            echo $! > "$HOME/.ai-workspace/cd-petclinic.pid" )
+
+      - name: Wait for deployment ready
+        working-directory: ${{ env.AI_TOOL_PATH }}
+        run: |
+          source venv/bin/activate
+          for i in $(seq 1 40); do
+            if python -m cli.main verify health-check \
+                 --url "http://$DEPLOY_HOST:$DEPLOY_PORT/petclinic/actuator/health" ; then
+              echo "deployment is up"; exit 0
+            fi
+            echo "  (attempt $i/40) waiting 5s..."; sleep 5
+          done
+          echo "deployment did not become ready in 200s"
+          tail -100 /tmp/cd-petclinic.log; exit 1
+
+      - name: Resolve the merged PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # A push event carries no PR number — ask the API which PR this
+          # commit was merged from. Empty if the commit had no PR.
+          N=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+                --jq '.[0].number' 2>/dev/null || true)
+          echo "number=${N}" >> "$GITHUB_OUTPUT"
+          echo "Merged PR: ${N:-<none>}"
+
+      # The deploy gate. verify deploy-check exits non-zero if the resident
+      # service is not UP or is not running ${{ github.sha }} — and either
+      # way posts a deploy report to the merged PR. A failed deploy is a
+      # real failure, so this step (and the job) goes red.
+      - name: Verify deployment
+        working-directory: ${{ env.AI_TOOL_PATH }}
+        run: |
+          source venv/bin/activate
+          PR_ARGS=""
+          if [ -n "${{ steps.pr.outputs.number }}" ]; then
+            PR_ARGS="--pr ${{ steps.pr.outputs.number }} --post"
+          fi
+          python -m cli.main verify deploy-check \
+            --url "http://$DEPLOY_HOST:$DEPLOY_PORT/petclinic/actuator" \
+            --expect ${{ github.sha }} $PR_ARGS
