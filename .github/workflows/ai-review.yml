@@ -58,10 +58,11 @@ on:
     types: [opened, synchronize, reopened]
   issue_comment:
     types: [created]
-  # CD: a push to the default branch is a merged PR. Change `main` here
-  # if your fork's default branch is `master`.
+  # CD: a push to the default branch is a merged PR. The example repo
+  # spring-petclinic-reactjs uses `master`; change this if your fork's
+  # default branch differs.
   push:
-    branches: [main]
+    branches: [master]
 
 # The GITHUB_TOKEN that GitHub Actions injects is read-only by default on
 # many repos. This pipeline posts PR comments and pushes /apply fixes, so
