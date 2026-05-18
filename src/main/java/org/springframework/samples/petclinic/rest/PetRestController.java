@@ -7,9 +7,12 @@ import org.springframework.samples.petclinic.mapper.PetMapper;
 import org.springframework.samples.petclinic.model.Pet;
 import org.springframework.samples.petclinic.rest.dto.PetDto;
 import org.springframework.samples.petclinic.service.ClinicService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.Map;
 
 @RestController
@@ -32,7 +35,7 @@ public class PetRestController {
         if (pet == null) {
             return new ResponseEntity<>(HttpStatus.NOT_FOUND);
         }
-        return new ResponseEntity<>(petMapper.toDto(pet), HttpStatus.OK);
+        return new ResponseEntity<>(petMapper.toPetDto(pet), HttpStatus.OK);
     }
 
     /**
@@ -50,11 +53,12 @@ public class PetRestController {
     }
 
     /**
-     * PATCH /api/pets/{petId}/label
+     * PUT /api/pets/{petId}/label
      * Sets the label of the pet.
      * Expects a JSON body: { "label": "some label text" }
      */
-    @PatchMapping("/pets/{petId}/label")
+    @PreAuthorize("hasRole('OWNER')")
+    @PutMapping("/pets/{petId}/label")
     public ResponseEntity<PetDto> updatePetLabel(
             @PathVariable("petId") int petId,
             @Valid @RequestBody PetLabelRequest labelRequest) {
@@ -67,13 +71,15 @@ public class PetRestController {
         pet.setLabel(labelRequest.getLabel());
         clinicService.savePet(pet);
 
-        return new ResponseEntity<>(petMapper.toDto(pet), HttpStatus.OK);
+        return new ResponseEntity<>(petMapper.toPetDto(pet), HttpStatus.OK);
     }
 
     /**
      * Simple request body DTO for the label PATCH endpoint.
      */
     public static class PetLabelRequest {
+        @NotNull
+        @Size(max = 80)
         private String label;
 
         public String getLabel() {

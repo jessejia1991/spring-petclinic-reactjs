@@ -95,17 +95,6 @@ export default class PetDetailPage extends React.Component<
       .catch(err => {
         this.setState({ error: err.message });
       });
-
-    // Also update label via the dedicated label endpoint if label is set
-    if (pet.label !== undefined && pet.id) {
-      fetch(`/api/pets/${pet.id}/label`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: pet.label }),
-      }).catch(err => {
-        console.warn('Failed to update pet label:', err);
-      });
-    }
   }
 
   render() {

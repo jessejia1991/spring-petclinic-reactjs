@@ -48,7 +48,7 @@ export default class PetEditor extends React.Component<PetEditorProps, PetEditor
     this.setState(prevState => ({
       pet: {
         ...prevState.pet,
-        [name]: value,
+        [name]: name === 'typeId' ? parseInt(value, 10) : value,
       },
     }));
   }

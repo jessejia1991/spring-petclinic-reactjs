@@ -1,3 +1,4 @@
+
 import * as React from 'react';
 import { shallow, mount } from 'enzyme';
 import { MemoryRouter } from 'react-router-dom';
@@ -8,23 +9,12 @@ import * as sinon from 'sinon';
 import PetEditor from '../../src/components/pets/PetEditor';
 
 describe('PetEditor - label field', () => {
-  const mockOwner = {
-    id: 1,
-    firstName: 'John',
-    lastName: 'Doe',
-    address: '123 Main St',
-    city: 'Springfield',
-    telephone: '5551234567',
-    pets: [],
-  };
-
   const mockPet = {
     id: 10,
     name: 'Fluffy',
     birthDate: '2020-01-15',
-    type: { id: 1, name: 'cat' },
+    typeId: 1,
     label: 'indoor',
-    visits: [],
   };
 
   const mockPetTypes = [
@@ -36,11 +26,10 @@ describe('PetEditor - label field', () => {
     const wrapper = mount(
       <MemoryRouter>
         <PetEditor
-          owner={mockOwner}
+          ownerId={1}
           pet={mockPet}
           petTypes={mockPetTypes}
           onSave={sinon.spy()}
-          isNew={false}
         />
       </MemoryRouter>
     );
@@ -54,11 +43,10 @@ describe('PetEditor - label field', () => {
     const wrapper = mount(
       <MemoryRouter>
         <PetEditor
-          owner={mockOwner}
+          ownerId={1}
           pet={mockPet}
           petTypes={mockPetTypes}
           onSave={sinon.spy()}
-          isNew={false}
         />
       </MemoryRouter>
     );
@@ -72,19 +60,17 @@ describe('PetEditor - label field', () => {
       id: undefined,
       name: '',
       birthDate: '',
-      type: { id: 1, name: 'cat' },
+      typeId: 1,
       label: '',
-      visits: [],
     };
 
     const wrapper = mount(
       <MemoryRouter>
         <PetEditor
-          owner={mockOwner}
+          ownerId={1}
           pet={newPet}
           petTypes={mockPetTypes}
           onSave={sinon.spy()}
-          isNew={true}
         />
       </MemoryRouter>
     );
@@ -98,11 +84,10 @@ describe('PetEditor - label field', () => {
     const wrapper = mount(
       <MemoryRouter>
         <PetEditor
-          owner={mockOwner}
+          ownerId={1}
           pet={mockPet}
           petTypes={mockPetTypes}
           onSave={sinon.spy()}
-          isNew={false}
         />
       </MemoryRouter>
     );
@@ -121,11 +106,10 @@ describe('PetEditor - label field', () => {
     const wrapper = mount(
       <MemoryRouter>
         <PetEditor
-          owner={mockOwner}
+          ownerId={1}
           pet={mockPet}
           petTypes={mockPetTypes}
           onSave={onSaveSpy}
-          isNew={false}
         />
       </MemoryRouter>
     );
@@ -148,11 +132,10 @@ describe('PetEditor - label field', () => {
     const wrapper = mount(
       <MemoryRouter>
         <PetEditor
-          owner={mockOwner}
+          ownerId={1}
           pet={mockPet}
           petTypes={mockPetTypes}
           onSave={sinon.spy()}
-          isNew={false}
         />
       </MemoryRouter>
     );
@@ -174,19 +157,17 @@ describe('PetEditor - label field', () => {
       id: undefined,
       name: 'Buddy',
       birthDate: '2021-05-10',
-      type: { id: 2, name: 'dog' },
+      typeId: 2,
       label: '',
-      visits: [],
     };
 
     const wrapper = mount(
       <MemoryRouter>
         <PetEditor
-          owner={mockOwner}
+          ownerId={1}
           pet={newPet}
           petTypes={mockPetTypes}
           onSave={onSaveSpy}
-          isNew={true}
         />
       </MemoryRouter>
     );
