@@ -19,6 +19,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 
 /**
@@ -44,15 +45,15 @@ public class Visit extends BaseEntity {
     private String description;
 
     /**
-     * Holds value of property pet.
+     * Holds value of property notes.
      */
-
-    // notes field - no validation constraints added yet
-    @Column(name = "notes")
+    @Size(max = 2000)
+    @Column(name = "notes", length = 2000)
     private String notes;
 
-    public String getNotes() { return notes; }
-    public void setNotes(String notes) { this.notes = notes; }
+    /**
+     * Holds value of property pet.
+     */
     @ManyToOne
     @JoinColumn(name = "pet_id")
     private Pet pet;
@@ -100,6 +101,24 @@ public class Visit extends BaseEntity {
      */
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    /**
+     * Getter for property notes.
+     *
+     * @return Value of property notes.
+     */
+    public String getNotes() {
+        return this.notes;
+    }
+
+    /**
+     * Setter for property notes.
+     *
+     * @param notes New value of property notes.
+     */
+    public void setNotes(String notes) {
+        this.notes = notes;
     }
 
     /**

@@ -11,4 +11,13 @@ class VisitNotesTest {
 
         assertThat(visit.getNotes()).isNull();
     }
+
+    @Test
+    void setNotes_storesValue_getNotesReturnsIt() {
+        Visit visit = new Visit();
+
+        visit.setNotes("some notes");
+
+        assertThat(visit.getNotes()).isEqualTo("some notes");
+    }
 }
