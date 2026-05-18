@@ -1,100 +1,199 @@
 import * as React from 'react';
+import { Link } from 'react-router-dom';
 
-import { IRouter, Link } from 'react-router';
-import { url, submitForm } from '../../util';
-
-import Input from '../form/Input';
-import DateInput from '../form/DateInput';
-import SelectInput from '../form/SelectInput';
-
-import { IError, IOwner, IPetRequest, IEditablePet, IPet, IPetType, IRouterContext, ISelectOption } from '../../types';
-
-interface IPetEditorProps {
-  pet: IEditablePet;
-  owner: IOwner;
-  pettypes: ISelectOption[];
+interface Pet {
+  id?: number;
+  name?: string;
+  birthDate?: string;
+  typeId?: number;
+  label?: string;
 }
 
-interface IPetEditorState {
-  editablePet?: IEditablePet;
-  error?: IError;
-};
+interface PetType {
+  id: number;
+  name: string;
+}
 
-export default class PetEditor extends React.Component<IPetEditorProps, IPetEditorState> {
+interface PetEditorProps {
+  pet: Pet;
+  petTypes: PetType[];
+  ownerId: number;
+  onSave: (pet: Pet) => void;
+}
 
-  context: IRouterContext;
+interface PetEditorState {
+  pet: Pet;
+  errors: { [key: string]: string };
+  submitting: boolean;
+  labelSaving: boolean;
+  labelSaved: boolean;
+  labelError: string | null;
+}
 
-  static contextTypes = {
-    router: React.PropTypes.object.isRequired
+class PetEditor extends React.Component<PetEditorProps, PetEditorState> {
+  constructor(props: PetEditorProps) {
+    super(props);
+    this.state = {
+      pet: { ...props.pet },
+      errors: {},
+      submitting: false,
+      labelSaving: false,
+      labelSaved: false,
+      labelError: null,
+    };
+  }
+
+  handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    this.setState(prevState => ({
+      pet: { ...prevState.pet, [name]: value },
+    }));
   };
 
-  constructor(props) {
-    super(props);
-    this.onInputChange = this.onInputChange.bind(this);
-    this.onSubmit = this.onSubmit.bind(this);
+  validate = (): boolean => {
+    const { pet } = this.state;
+    const errors: { [key: string]: string } = {};
+    if (!pet.name || pet.name.trim() === '') {
+      errors.name = 'Name is required';
+    }
+    if (!pet.birthDate) {
+      errors.birthDate = 'Birth date is required';
+    }
+    if (!pet.typeId) {
+      errors.typeId = 'Type is required';
+    }
+    this.setState({ errors });
+    return Object.keys(errors).length === 0;
+  };
 
-    this.state = { editablePet: Object.assign({}, props.pet ) };
-  }
+  handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!this.validate()) return;
+    this.setState({ submitting: true });
+    this.props.onSave(this.state.pet);
+  };
 
-  onSubmit(event) {
-    event.preventDefault();
-
-    const { owner } = this.props;
-    const { editablePet } = this.state;
-
-    const request: IPetRequest = {
-      birthDate: editablePet.birthDate,
-      name: editablePet.name,
-      typeId: editablePet.typeId
-    };
-
-    const url = editablePet.isNew ? '/api/owners/' + owner.id + '/pets' :  '/api/owners/' + owner.id + '/pets/' + editablePet.id;
-    submitForm(editablePet.isNew ? 'POST' : 'PUT', url, request, (status, response) => {
-      if (status === 204) {
-        this.context.router.push({
-          pathname: '/owners/' + owner.id
-        });
-      } else {
-        console.log('ERROR?!...', response);
-        this.setState({ error: response });
+  handleLabelSave = async () => {
+    const { pet } = this.state;
+    if (!pet.id) return;
+    this.setState({ labelSaving: true, labelSaved: false, labelError: null });
+    try {
+      const response = await fetch(`/api/pets/${pet.id}/label`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: pet.label || '' }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        this.setState({ labelSaving: false, labelError: `Failed to save label: ${errorText}` });
+        return;
       }
-    });
-  }
-
-  onInputChange(name: string, value: string) {
-    const { editablePet } = this.state;
-    const modifiedPet = Object.assign({}, editablePet, { [name]: value });
-
-    this.setState({ editablePet: modifiedPet });
-  }
+      this.setState({ labelSaving: false, labelSaved: true });
+      setTimeout(() => this.setState({ labelSaved: false }), 2000);
+    } catch (err) {
+      this.setState({ labelSaving: false, labelError: String(err) });
+    }
+  };
 
   render() {
-    const { owner, pettypes } = this.props;
-    const { editablePet, error } = this.state;
-
-    const formLabel = editablePet.isNew ? 'Add Pet' : 'Update Pet';
+    const { pet, errors, submitting, labelSaving, labelSaved, labelError } = this.state;
+    const { petTypes, ownerId } = this.props;
+    const isEdit = !!pet.id;
 
     return (
-      <span>
-        <h2>{formLabel}</h2>
-        <form className='form-horizontal' method='POST' action={url('/api/owner')}>
-          <div className='form-group has-feedback'>
-            <div className='form-group'>
-              <label className='col-sm-2 control-label'>Owner</label>
-              <div className='col-sm-10'>{owner.firstName} {owner.lastName}</div>
-            </div>
-
-            <Input object={editablePet} error={error} label='Name' name='name' onChange={this.onInputChange} />
-            <DateInput object={editablePet} error={error} label='Birth date' name='birthDate' onChange={this.onInputChange} />
-            <SelectInput object={editablePet} error={error} label='Type' name='typeId' options={pettypes} onChange={this.onInputChange} />
+      <div className="container">
+        <h2>{isEdit ? 'Edit Pet' : 'Add Pet'}</h2>
+        <form onSubmit={this.handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="name">Name</label>
+            <input
+              id="name"
+              name="name"
+              type="text"
+              className={`form-control ${errors.name ? 'is-invalid' : ''}`}
+              value={pet.name || ''}
+              onChange={this.handleChange}
+            />
+            {errors.name && <div className="invalid-feedback">{errors.name}</div>}
           </div>
-          <div className='form-group'>
-            <div className='col-sm-offset-2 col-sm-10'>
-              <button className='btn btn-default' type='submit' onClick={this.onSubmit}>{formLabel}</button>
+
+          <div className="form-group">
+            <label htmlFor="birthDate">Birth Date</label>
+            <input
+              id="birthDate"
+              name="birthDate"
+              type="date"
+              className={`form-control ${errors.birthDate ? 'is-invalid' : ''}`}
+              value={pet.birthDate || ''}
+              onChange={this.handleChange}
+            />
+            {errors.birthDate && <div className="invalid-feedback">{errors.birthDate}</div>}
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="typeId">Type</label>
+            <select
+              id="typeId"
+              name="typeId"
+              className={`form-control ${errors.typeId ? 'is-invalid' : ''}`}
+              value={pet.typeId || ''}
+              onChange={this.handleChange}
+            >
+              <option value="">-- select type --</option>
+              {petTypes.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            {errors.typeId && <div className="invalid-feedback">{errors.typeId}</div>}
+          </div>
+
+          {/* Label field — wired to /api/pets/:id/label */}
+          <div className="form-group">
+            <label htmlFor="label">Label</label>
+            <div className="input-group">
+              <input
+                id="label"
+                name="label"
+                type="text"
+                className="form-control"
+                placeholder="e.g. indoor, needs-medication"
+                value={pet.label || ''}
+                onChange={this.handleChange}
+              />
+              {isEdit && (
+                <div className="input-group-append">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={this.handleLabelSave}
+                    disabled={labelSaving}
+                  >
+                    {labelSaving ? 'Saving…' : labelSaved ? 'Saved ✓' : 'Save Label'}
+                  </button>
+                </div>
+              )}
             </div>
+            {labelError && <div className="text-danger mt-1">{labelError}</div>}
+            {!isEdit && (
+              <small className="form-text text-muted">
+                You can set a label after the pet has been created.
+              </small>
+            )}
+          </div>
+
+          <div className="form-group">
+            <button type="submit" className="btn btn-primary" disabled={submitting}>
+              {submitting ? 'Saving…' : isEdit ? 'Update Pet' : 'Add Pet'}
+            </button>
+            {' '}
+            <Link to={`/owners/${ownerId}`} className="btn btn-secondary">
+              Cancel
+            </Link>
           </div>
         </form>
-      </span>
+      </div>
     );
   }
 }
+
+export default PetEditor;
