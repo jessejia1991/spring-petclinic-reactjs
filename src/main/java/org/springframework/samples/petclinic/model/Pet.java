@@ -35,6 +35,9 @@ import java.util.*;
 @Table(name = "pets")
 public class Pet extends NamedEntity {
 
+    @Column(name = "label")
+    private String label;
+
     @Column(name = "birth_date", columnDefinition = "DATE")
     private LocalDate birthDate;
 
@@ -55,6 +58,14 @@ public class Pet extends NamedEntity {
 
     public void setBirthDate(LocalDate birthDate) {
         this.birthDate = birthDate;
+    }
+
+    public String getLabel() {
+        return this.label;
+    }
+
+    public void setLabel(String label) {
+        this.label = label;
     }
 
     public PetType getType() {
